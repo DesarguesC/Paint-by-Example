@@ -169,6 +169,7 @@ class DDIMSampler(object):
         b, *_, device = *x.shape, x.device
         if 'test_model_kwargs' in kwargs:
             kwargs=kwargs['test_model_kwargs']
+            # print(f'x.shape = {x.shape}')
             x = torch.cat([x, kwargs['inpaint_image'], kwargs['inpaint_mask']],dim=1)
         elif 'rest' in kwargs:
             x = torch.cat((x, kwargs['rest']), dim=1)

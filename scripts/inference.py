@@ -123,6 +123,13 @@ def get_tensor_clip(normalize=True, toTensor=True):
                                                 (0.26862954, 0.26130258, 0.27577711))]
     return torchvision.transforms.Compose(transform_list)
 
+def about8(u):
+    if (u-u//8*8)<4: return (u//8)*8
+    else : return (u//8+1)*8
+
+def about64(u):
+    if (u-u//64*64)<32: return (u//64)*64
+    else : return (u//64+1)*64
 
 def main():
     parser = argparse.ArgumentParser()
@@ -223,7 +230,7 @@ def main():
     parser.add_argument(
         "--config",
         type=str,
-        default="",
+        default="configs/v1.yaml",
         help="path to config which constructs model",
     )
     parser.add_argument(
@@ -304,12 +311,16 @@ def main():
             with model.ema_scope():
                 filename=os.path.basename(opt.image_path)
                 img_p = Image.open(opt.image_path).convert("RGB")
+                img_p = img_p.resize((about64(img_p.size[0]), about64(img_p.size[1])))
+                print(f'img_p.size = {img_p.size}')
+                opt.W, opt.H = img_p.size[0], img_p.size[1]
                 image_tensor = get_tensor()(img_p)
+                print(f'image_tensor.shape = {image_tensor.shape}')
                 image_tensor = image_tensor.unsqueeze(0)
                 ref_p = Image.open(opt.reference_path).convert("RGB").resize((224,224))
                 ref_tensor=get_tensor_clip()(ref_p)
                 ref_tensor = ref_tensor.unsqueeze(0)
-                mask=Image.open(opt.mask_path).convert("L")
+                mask=Image.open(opt.mask_path).convert("L").resize((img_p.size[0], img_p.size[1]))
                 mask = np.array(mask)[None,None]
                 mask = 1 - mask.astype(np.float32)/255.0
                 mask[mask < 0.5] = 0
@@ -326,12 +337,18 @@ def main():
                 c = model.get_learned_conditioning(ref_tensor.to(torch.float16))
                 c = model.proj_out(c)
                 inpaint_mask=test_model_kwargs['inpaint_mask']
+                mmm = test_model_kwargs['inpaint_mask']
+                print(f'ori inpaint_mask.shape = {mmm.shape}')
                 z_inpaint = model.encode_first_stage(test_model_kwargs['inpaint_image'])
                 z_inpaint = model.get_first_stage_encoding(z_inpaint).detach()
+                # test_model_kwargs['inpaint_image']=Resize(size=(about8(z_inpaint.shape[-2]), about8(z_inpaint.shape[-1])))(z_inpaint)
                 test_model_kwargs['inpaint_image']=z_inpaint
                 test_model_kwargs['inpaint_mask']=Resize([z_inpaint.shape[-2],z_inpaint.shape[-1]])(test_model_kwargs['inpaint_mask'])
+                mmm = test_model_kwargs['inpaint_mask']
+                print(f'test_model_kwargs[\'inpaint_image\'].shape = {z_inpaint.shape}, test_model_kwargs[\'inpaint_mask\'].shape = {mmm.shape}')
 
                 shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
+                # shape = [opt.C, z_inpaint.shape[-2], z_inpaint.shape[-1]]
                 samples_ddim, _ = sampler.sample(S=opt.ddim_steps,
                                                     conditioning=c,
                                                     batch_size=opt.n_samples,
